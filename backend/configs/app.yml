@@ -1,0 +1,20 @@
+# backend/configs/app.yml
+
+server:
+    port: 8080
+database:
+    dsn: 'gosveltekit.db'
+jwt:
+    secret_key: 'G%bv7sK4w@vkRjUs#uP2DbB5dFwsnpMYDX92gKb4' # Em produção, use variáveis de ambiente
+    access_token_ttl: 15m
+    refresh_token_ttl: 168h # 7 dias
+    password_reset_ttl: 1h
+    issuer: 'gosveltekit'
+email:
+    smtp_host: 'sandbox.smtp.mailtrap.io'
+    smtp_port: 587
+    smtp_username: 'da92b160236933'
+    smtp_password: '' # Em produção, use variáveis de ambiente
+    from_email: 'no-reply@gosveltekit.com'
+    from_name: 'GoSvelteKit'
+    reset_url: 'http://localhost:5173/reset-password?token=' # URL base para links de recuperação
