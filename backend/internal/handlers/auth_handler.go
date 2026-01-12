@@ -48,21 +48,24 @@ type PasswordResetRequest struct {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Debug("Requisição de login com JSON inválido", "error", err, "ip", c.ClientIP())
+		logger.Debug("Requisição de login com JSON inválido", "error", err, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Validate input data before attempting login
 	if err := validation.ValidateLoginRequest(req.Username, req.Password); err != nil {
-		logger.Debug("Requisição de login com validação falhada", "error", err, "username", req.Username, "ip", c.ClientIP())
+		logger.Debug("Requisição de login com validação falhada", "error", err, "username", req.Username, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Get client IP and user agent
-	ip := c.ClientIP()
-	userAgent := c.Request.UserAgent()
+	ip := getClientIP(c)
+	userAgent := ""
+	if c.Request != nil {
+		userAgent = c.Request.UserAgent()
+	}
 
 	response, err := h.authService.Login(req.Username, req.Password, ip, userAgent)
 	if err != nil {
@@ -98,19 +101,22 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	sessionID, exists := c.Get("sessionID")
 	if !exists {
-		logger.Debug("Tentativa de logout sem sessão", "ip", c.ClientIP())
+		ip := getClientIP(c)
+		logger.Debug("Tentativa de logout sem sessão", "ip", ip)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "não autenticado"})
 		return
 	}
 
 	sessionIDStr := sessionID.(string)
 	if err := h.authService.Logout(sessionIDStr); err != nil {
-		logger.Error("Erro ao fazer logout", "error", err, "session_id", sessionIDStr, "ip", c.ClientIP())
+		ip := getClientIP(c)
+		logger.Error("Erro ao fazer logout", "error", err, "session_id", sessionIDStr, "ip", ip)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "falha ao fazer logout"})
 		return
 	}
 
-	logger.Info("Logout realizado com sucesso", "session_id", sessionIDStr, "ip", c.ClientIP())
+	ip := getClientIP(c)
+	logger.Info("Logout realizado com sucesso", "session_id", sessionIDStr, "ip", ip)
 
 	// Clear session cookie
 	middleware.ClearSessionCookie(c)
@@ -122,7 +128,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegistrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Debug("Requisição de registro com JSON inválido", "error", err, "ip", c.ClientIP())
+		logger.Debug("Requisição de registro com JSON inválido", "error", err, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -134,7 +140,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.Password,
 		req.DisplayName,
 	); err != nil {
-		logger.Debug("Requisição de registro com validação falhada", "error", err, "username", req.Username, "email", req.Email, "ip", c.ClientIP())
+		logger.Debug("Requisição de registro com validação falhada", "error", err, "username", req.Username, "email", req.Email, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -142,7 +148,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// Forward to service layer
 	user, err := h.authService.Register(req.Username, req.Email, req.Password, req.DisplayName)
 	if err != nil {
-		logger.Debug("Erro ao registrar usuário", "error", err, "username", req.Username, "email", req.Email, "ip", c.ClientIP())
+		logger.Debug("Erro ao registrar usuário", "error", err, "username", req.Username, "email", req.Email, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -159,14 +165,14 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Debug("Requisição de reset de senha com JSON inválido", "error", err, "ip", c.ClientIP())
+		logger.Debug("Requisição de reset de senha com JSON inválido", "error", err, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Validate email
 	if err := validation.ValidateEmail(req.Email); err != nil {
-		logger.Debug("Requisição de reset de senha com email inválido", "error", err, "email", req.Email, "ip", c.ClientIP())
+		logger.Debug("Requisição de reset de senha com email inválido", "error", err, "email", req.Email, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -188,14 +194,14 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		logger.Debug("Requisição de reset de senha com JSON inválido", "error", err, "ip", c.ClientIP())
+		logger.Debug("Requisição de reset de senha com JSON inválido", "error", err, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Validate password reset request
 	if err := validation.ValidatePasswordReset(req.Token, req.NewPassword, req.ConfirmPassword); err != nil {
-		logger.Debug("Requisição de reset de senha com validação falhada", "error", err, "ip", c.ClientIP())
+		logger.Debug("Requisição de reset de senha com validação falhada", "error", err, "ip", getClientIP(c))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -203,16 +209,17 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	if err := h.authService.ResetPassword(req.Token, req.NewPassword); err != nil {
 		status := http.StatusBadRequest
 		message := "falha ao redefinir senha"
+		ip := getClientIP(c)
 
 		switch {
 		case err == service.ErrInvalidToken:
 			message = "token inválido"
-			logger.Warn("Tentativa de reset de senha com token inválido", "ip", c.ClientIP())
+			logger.Warn("Tentativa de reset de senha com token inválido", "ip", ip)
 		case err == service.ErrExpiredToken:
 			message = "token expirado"
-			logger.Warn("Tentativa de reset de senha com token expirado", "ip", c.ClientIP())
+			logger.Warn("Tentativa de reset de senha com token expirado", "ip", ip)
 		default:
-			logger.Error("Erro ao resetar senha", "error", err, "ip", c.ClientIP())
+			logger.Error("Erro ao resetar senha", "error", err, "ip", ip)
 		}
 
 		c.JSON(status, gin.H{"error": message})
@@ -231,4 +238,13 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user.(*auth.UserData))
+}
+
+// getClientIP safely gets the client IP from the context
+// Returns empty string if request is not available (e.g., in tests)
+func getClientIP(c *gin.Context) string {
+	if c.Request == nil {
+		return ""
+	}
+	return c.ClientIP()
 }
