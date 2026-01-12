@@ -1,8 +1,7 @@
 ---
-description: Importante project rules that needs to be ALWAYS included
-globs: 
-alwaysApply: true
+alwaysApply: false
 ---
+
 ## Project Overview
 
 GoSvelteKit is a template/base project with a Golang backend and SvelteKit (Svelte 5) frontend, designed to kickstart new projects with authentication and basic functionality already implemented.

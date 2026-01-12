@@ -4,9 +4,10 @@ package middleware
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
-	"sync"
+	"gosveltekit/internal/logger"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/time/rate"
@@ -59,6 +60,7 @@ func RateLimitMiddleware(limiter *IPRateLimiter) gin.HandlerFunc {
 		l := limiter.GetLimiter(ip)
 
 		if !l.Allow() {
+			logger.Warn("Rate limit excedido", "ip", ip, "path", c.Request.URL.Path)
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"error": "limite de requisições excedido",
 			})

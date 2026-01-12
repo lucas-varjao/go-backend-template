@@ -4,6 +4,9 @@ server:
     port: 8080
 database:
     dsn: 'gosveltekit.db'
+log:
+    level: 'info' # debug, info, warn, error
+    format: 'text' # json, text
 email:
     smtp_host: 'sandbox.smtp.mailtrap.io'
     smtp_port: 587

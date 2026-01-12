@@ -36,11 +36,18 @@ type EmailConfig struct {
 	ResetURL     string `mapstructure:"reset_url"`
 }
 
+// LogConfig contém configurações de logging
+type LogConfig struct {
+	Level  string `mapstructure:"level"`  // debug, info, warn, error
+	Format string `mapstructure:"format"` // json, text
+}
+
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	JWT      JWTConfig      `mapstructure:"jwt"`
 	Email    EmailConfig    `mapstructure:"email"`
+	Log      LogConfig      `mapstructure:"log"`
 }
 
 var cfg *Config

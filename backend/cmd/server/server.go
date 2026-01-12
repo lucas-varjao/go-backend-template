@@ -3,13 +3,14 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"os"
 
 	"gosveltekit/internal/auth"
 	gormadapter "gosveltekit/internal/auth/adapter/gorm"
 	"gosveltekit/internal/config"
 	"gosveltekit/internal/email"
 	"gosveltekit/internal/handlers"
+	"gosveltekit/internal/logger"
 	"gosveltekit/internal/models"
 	"gosveltekit/internal/router"
 	"gosveltekit/internal/service"
@@ -22,24 +23,46 @@ import (
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		panic("Falha ao carregar as configurações")
+		// Initialize logger with defaults before config is loaded
+		logger.Init("info", "text")
+		logger.Error("Falha ao carregar as configurações", "error", err)
+		os.Exit(1)
 	}
+
+	// Initialize logger with config
+	logLevel := cfg.Log.Level
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	logFormat := cfg.Log.Format
+	if logFormat == "" {
+		logFormat = "text"
+	}
+	logger.Init(logLevel, logFormat)
+
+	logger.Info("Iniciando servidor", "port", cfg.Server.Port)
 
 	dbDSN := cfg.Database.DSN
 
 	// Connect to SQLite
 	db, err := gorm.Open(sqlite.Open(dbDSN), &gorm.Config{})
 	if err != nil {
-		panic("Falha ao conectar ao banco de dados")
+		logger.Error("Falha ao conectar ao banco de dados", "error", err, "dsn", dbDSN)
+		os.Exit(1)
 	}
+	logger.Info("Conectado ao banco de dados", "dsn", dbDSN)
 
 	// Migrate tables (including new Session table)
-	db.AutoMigrate(&models.User{}, &models.Session{})
+	if err := db.AutoMigrate(&models.User{}, &models.Session{}); err != nil {
+		logger.Error("Falha ao executar migrações", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("Migrações executadas com sucesso")
 
 	// Create admin user if not exists
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("Falha ao gerar hash da senha do admin", "error", err)
 	}
 
 	result := db.Where(models.User{Username: "admin"}).FirstOrCreate(&models.User{
@@ -50,9 +73,9 @@ func main() {
 		Role:         "admin",
 	})
 	if result.Error != nil {
-		fmt.Println(result.Error)
+		logger.Error("Falha ao criar usuário admin", "error", result.Error)
 	}
-	fmt.Printf("Admin user ready - rows affected: %d\n", result.RowsAffected)
+	logger.Info("Usuário admin verificado", "rows_affected", result.RowsAffected)
 
 	// Initialize adapters
 	userAdapter := gormadapter.NewUserAdapter(db)
@@ -73,8 +96,13 @@ func main() {
 	r := router.SetupRouter(authHandler, authManager)
 
 	// Start server
-	log.Println("Starting server on :8080")
-	if err := r.Run(":8080"); err != nil {
-		log.Fatalf("Erro ao iniciar servidor: %v", err)
+	port := ":8080"
+	if cfg.Server.Port != 0 {
+		port = fmt.Sprintf(":%d", cfg.Server.Port)
+	}
+	logger.Info("Servidor iniciado", "port", port)
+	if err := r.Run(port); err != nil {
+		logger.Error("Erro ao iniciar servidor", "error", err, "port", port)
+		os.Exit(1)
 	}
 }

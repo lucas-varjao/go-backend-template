@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"gosveltekit/internal/auth"
 	gormadapter "gosveltekit/internal/auth/adapter/gorm"
 	"gosveltekit/internal/email"
+	"gosveltekit/internal/logger"
 	"gosveltekit/internal/models"
 
 	"golang.org/x/crypto/bcrypt"
@@ -74,16 +74,21 @@ func (s *AuthService) Login(username, password, ip, userAgent string) (*LoginRes
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrInvalidCredentials):
+			logger.Warn("Tentativa de login com credenciais inválidas", "username", username, "ip", ip)
 			return nil, ErrInvalidCredentials
 		case errors.Is(err, auth.ErrUserNotActive):
+			logger.Warn("Tentativa de login com usuário inativo", "username", username, "ip", ip)
 			return nil, ErrUserNotActive
 		case errors.Is(err, auth.ErrAccountLocked):
+			logger.Warn("Tentativa de login com conta bloqueada", "username", username, "ip", ip)
 			return nil, errors.New("conta temporariamente bloqueada, tente novamente mais tarde")
 		default:
+			logger.Error("Erro ao fazer login", "error", err, "username", username, "ip", ip)
 			return nil, err
 		}
 	}
 
+	logger.Info("Login realizado com sucesso", "user_id", user.ID, "username", username, "ip", ip)
 	return &LoginResponse{
 		SessionID: session.ID,
 		ExpiresAt: session.ExpiresAt,
@@ -123,11 +128,13 @@ func (s *AuthService) LogoutAll(userID string) error {
 func (s *AuthService) Register(username, email, password, displayName string) (*models.User, error) {
 	// Check if username already exists
 	if _, err := s.userAdapter.FindUserByIdentifier(username); err == nil {
+		logger.Warn("Tentativa de registro com username já existente", "username", username)
 		return nil, errors.New("username already exists")
 	}
 
 	// Check if email already exists
 	if _, err := s.userAdapter.FindByEmail(email); err == nil {
+		logger.Warn("Tentativa de registro com email já existente", "email", email)
 		return nil, errors.New("email already exists")
 	}
 
@@ -139,15 +146,18 @@ func (s *AuthService) Register(username, email, password, displayName string) (*
 		DisplayName: displayName,
 	})
 	if err != nil {
+		logger.Error("Erro ao criar usuário", "error", err, "username", username, "email", email)
 		return nil, err
 	}
 
 	// Get the actual User model for response
 	user, err := s.userAdapter.GetUserModel(userData.ID)
 	if err != nil {
+		logger.Error("Erro ao buscar usuário criado", "error", err, "user_id", userData.ID)
 		return nil, err
 	}
 
+	logger.Info("Usuário registrado com sucesso", "user_id", user.ID, "username", username, "email", email)
 	return user, nil
 }
 
@@ -156,6 +166,7 @@ func (s *AuthService) RequestPasswordReset(emailAddr string) error {
 	user, err := s.userAdapter.FindByEmail(emailAddr)
 	if err != nil {
 		// Don't reveal if email exists
+		logger.Debug("Solicitação de reset de senha para email não encontrado", "email", emailAddr)
 		return nil
 	}
 
@@ -189,7 +200,9 @@ func (s *AuthService) RequestPasswordReset(emailAddr string) error {
 		user.Username,
 		displayName,
 	); err != nil {
-		fmt.Printf("Error sending password reset email: %v\n", err)
+		logger.Error("Erro ao enviar email de recuperação de senha", "error", err, "email", user.Email)
+	} else {
+		logger.Info("Email de recuperação de senha enviado", "email", user.Email, "user_id", user.ID)
 	}
 
 	return nil
@@ -220,12 +233,14 @@ func (s *AuthService) ResetPassword(tokenFromUser, newPassword string) error {
 	}
 
 	if matchedUser == nil {
+		logger.Warn("Tentativa de reset de senha com token inválido")
 		return ErrInvalidToken
 	}
 
 	// Hash new password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
+		logger.Error("Erro ao gerar hash da nova senha", "error", err, "user_id", matchedUser.ID)
 		return err
 	}
 
@@ -238,7 +253,13 @@ func (s *AuthService) ResetPassword(tokenFromUser, newPassword string) error {
 	userID := strconv.FormatUint(uint64(matchedUser.ID), 10)
 	_ = s.authManager.LogoutAll(userID)
 
-	return s.userAdapter.UpdateUser(matchedUser)
+	if err := s.userAdapter.UpdateUser(matchedUser); err != nil {
+		logger.Error("Erro ao atualizar senha do usuário", "error", err, "user_id", matchedUser.ID)
+		return err
+	}
+
+	logger.Info("Senha resetada com sucesso", "user_id", matchedUser.ID)
+	return nil
 }
 
 // Helper methods

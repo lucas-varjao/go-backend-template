@@ -58,7 +58,6 @@ require (
 
 require (
 	github.com/gin-contrib/cors v1.7.6
-	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	golang.org/x/text v0.30.0 // indirect

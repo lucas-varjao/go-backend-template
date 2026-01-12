@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gosveltekit/internal/auth"
+	"gosveltekit/internal/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +30,7 @@ func AuthMiddleware(authManager *auth.AuthManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionID := extractSessionID(c)
 		if sessionID == "" {
+			logger.Debug("Requisição sem sessão", "path", c.Request.URL.Path, "ip", c.ClientIP())
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "autorização necessária"})
 			return
 		}
@@ -41,10 +43,15 @@ func AuthMiddleware(authManager *auth.AuthManager) gin.HandlerFunc {
 			switch {
 			case err == auth.ErrSessionExpired:
 				message = "sessão expirada"
+				logger.Debug("Sessão expirada", "session_id", sessionID, "ip", c.ClientIP())
 			case err == auth.ErrSessionNotFound:
 				message = "sessão não encontrada"
+				logger.Warn("Sessão não encontrada", "session_id", sessionID, "ip", c.ClientIP())
 			case err == auth.ErrUserNotActive:
 				message = "usuário inativo"
+				logger.Warn("Tentativa de acesso com usuário inativo", "session_id", sessionID, "ip", c.ClientIP())
+			default:
+				logger.Error("Erro ao validar sessão", "error", err, "session_id", sessionID, "ip", c.ClientIP())
 			}
 
 			c.AbortWithStatusJSON(status, gin.H{"error": message})
