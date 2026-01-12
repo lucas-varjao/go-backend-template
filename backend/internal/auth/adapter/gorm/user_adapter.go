@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gosveltekit/internal/auth"
+	"gosveltekit/internal/logger"
 	"gosveltekit/internal/models"
 
 	"golang.org/x/crypto/bcrypt"
@@ -30,6 +31,7 @@ func (a *UserAdapter) FindUserByIdentifier(identifier string) (*auth.UserData, e
 		if err == gorm.ErrRecordNotFound {
 			return nil, auth.ErrInvalidCredentials
 		}
+		logger.Error("Erro ao buscar usuário por identificador", "error", err, "identifier", identifier)
 		return nil, err
 	}
 	return a.toUserData(&user), nil
@@ -39,6 +41,7 @@ func (a *UserAdapter) FindUserByIdentifier(identifier string) (*auth.UserData, e
 func (a *UserAdapter) FindUserByID(id string) (*auth.UserData, error) {
 	userID, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
+		logger.Debug("ID de usuário inválido", "user_id", id, "error", err)
 		return nil, auth.ErrInvalidCredentials
 	}
 
@@ -47,6 +50,7 @@ func (a *UserAdapter) FindUserByID(id string) (*auth.UserData, error) {
 		if err == gorm.ErrRecordNotFound {
 			return nil, auth.ErrInvalidCredentials
 		}
+		logger.Error("Erro ao buscar usuário por ID", "error", err, "user_id", id)
 		return nil, err
 	}
 	return a.toUserData(&user), nil
@@ -67,7 +71,10 @@ func (a *UserAdapter) ValidateCredentials(identifier, password string) (*auth.Us
 
 	// Update last login time
 	user.LastLogin = time.Now()
-	a.db.Save(&user)
+	if err := a.db.Save(&user).Error; err != nil {
+		logger.Error("Erro ao atualizar último login", "error", err, "user_id", user.ID)
+		// Não retornar erro, apenas logar
+	}
 
 	return a.toUserData(&user), nil
 }
@@ -77,6 +84,7 @@ func (a *UserAdapter) CreateUser(data auth.CreateUserInput) (*auth.UserData, err
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(data.Password), bcrypt.DefaultCost)
 	if err != nil {
+		logger.Error("Erro ao gerar hash da senha", "error", err, "identifier", data.Identifier)
 		return nil, err
 	}
 
@@ -90,6 +98,7 @@ func (a *UserAdapter) CreateUser(data auth.CreateUserInput) (*auth.UserData, err
 	}
 
 	if err := a.db.Create(user).Error; err != nil {
+		logger.Error("Erro ao criar usuário no banco de dados", "error", err, "identifier", data.Identifier, "email", data.Email)
 		return nil, err
 	}
 
@@ -136,7 +145,11 @@ func (a *UserAdapter) FindByEmail(email string) (*models.User, error) {
 
 // UpdateUser saves changes to user model
 func (a *UserAdapter) UpdateUser(user *models.User) error {
-	return a.db.Save(user).Error
+	if err := a.db.Save(user).Error; err != nil {
+		logger.Error("Erro ao atualizar usuário no banco de dados", "error", err, "user_id", user.ID)
+		return err
+	}
+	return nil
 }
 
 func (a *UserAdapter) toUserData(user *models.User) *auth.UserData {

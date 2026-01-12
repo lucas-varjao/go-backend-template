@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"gosveltekit/internal/auth"
+	"gosveltekit/internal/logger"
 	"gosveltekit/internal/middleware"
 	"gosveltekit/internal/service"
 	"gosveltekit/internal/validation"
@@ -47,12 +48,14 @@ type PasswordResetRequest struct {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Debug("Requisição de login com JSON inválido", "error", err, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Validate input data before attempting login
 	if err := validation.ValidateLoginRequest(req.Username, req.Password); err != nil {
+		logger.Debug("Requisição de login com validação falhada", "error", err, "username", req.Username, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -95,14 +98,19 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) Logout(c *gin.Context) {
 	sessionID, exists := c.Get("sessionID")
 	if !exists {
+		logger.Debug("Tentativa de logout sem sessão", "ip", c.ClientIP())
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "não autenticado"})
 		return
 	}
 
-	if err := h.authService.Logout(sessionID.(string)); err != nil {
+	sessionIDStr := sessionID.(string)
+	if err := h.authService.Logout(sessionIDStr); err != nil {
+		logger.Error("Erro ao fazer logout", "error", err, "session_id", sessionIDStr, "ip", c.ClientIP())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "falha ao fazer logout"})
 		return
 	}
+
+	logger.Info("Logout realizado com sucesso", "session_id", sessionIDStr, "ip", c.ClientIP())
 
 	// Clear session cookie
 	middleware.ClearSessionCookie(c)
@@ -114,6 +122,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req RegistrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Debug("Requisição de registro com JSON inválido", "error", err, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -125,6 +134,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		req.Password,
 		req.DisplayName,
 	); err != nil {
+		logger.Debug("Requisição de registro com validação falhada", "error", err, "username", req.Username, "email", req.Email, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -132,6 +142,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// Forward to service layer
 	user, err := h.authService.Register(req.Username, req.Email, req.Password, req.DisplayName)
 	if err != nil {
+		logger.Debug("Erro ao registrar usuário", "error", err, "username", req.Username, "email", req.Email, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -148,12 +159,14 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Debug("Requisição de reset de senha com JSON inválido", "error", err, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Validate email
 	if err := validation.ValidateEmail(req.Email); err != nil {
+		logger.Debug("Requisição de reset de senha com email inválido", "error", err, "email", req.Email, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -175,12 +188,14 @@ func (h *AuthHandler) RequestPasswordReset(c *gin.Context) {
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Debug("Requisição de reset de senha com JSON inválido", "error", err, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// Validate password reset request
 	if err := validation.ValidatePasswordReset(req.Token, req.NewPassword, req.ConfirmPassword); err != nil {
+		logger.Debug("Requisição de reset de senha com validação falhada", "error", err, "ip", c.ClientIP())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -192,8 +207,12 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		switch {
 		case err == service.ErrInvalidToken:
 			message = "token inválido"
+			logger.Warn("Tentativa de reset de senha com token inválido", "ip", c.ClientIP())
 		case err == service.ErrExpiredToken:
 			message = "token expirado"
+			logger.Warn("Tentativa de reset de senha com token expirado", "ip", c.ClientIP())
+		default:
+			logger.Error("Erro ao resetar senha", "error", err, "ip", c.ClientIP())
 		}
 
 		c.JSON(status, gin.H{"error": message})

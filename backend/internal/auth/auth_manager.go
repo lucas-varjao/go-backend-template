@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"sync"
 	"time"
+
+	"gosveltekit/internal/logger"
 )
 
 // AuthConfig holds configuration for the auth manager
@@ -82,6 +84,7 @@ func (m *AuthManager) Login(identifier, password string, metadata SessionMetadat
 	expiresAt := time.Now().Add(m.config.SessionDuration)
 	session, err := m.sessionAdapter.CreateSession(user.ID, expiresAt, metadata)
 	if err != nil {
+		logger.Error("Erro ao criar sessão após login", "error", err, "user_id", user.ID)
 		return nil, nil, err
 	}
 
@@ -106,6 +109,7 @@ func (m *AuthManager) ValidateSession(sessionID string) (*Session, *UserData, er
 	// Get user data
 	user, err := m.userAdapter.FindUserByID(session.UserID)
 	if err != nil {
+		logger.Error("Erro ao buscar usuário durante validação de sessão", "error", err, "session_id", sessionID, "user_id", session.UserID)
 		return nil, nil, err
 	}
 
@@ -122,6 +126,9 @@ func (m *AuthManager) ValidateSession(sessionID string) (*Session, *UserData, er
 		if err := m.sessionAdapter.UpdateSessionExpiry(sessionID, newExpiresAt); err == nil {
 			session.ExpiresAt = newExpiresAt
 			session.Fresh = true
+			logger.Debug("Sessão renovada", "session_id", sessionID, "user_id", user.ID)
+		} else {
+			logger.Warn("Erro ao renovar sessão", "error", err, "session_id", sessionID)
 		}
 	}
 
@@ -130,12 +137,21 @@ func (m *AuthManager) ValidateSession(sessionID string) (*Session, *UserData, er
 
 // Logout invalidates a session
 func (m *AuthManager) Logout(sessionID string) error {
-	return m.sessionAdapter.DeleteSession(sessionID)
+	if err := m.sessionAdapter.DeleteSession(sessionID); err != nil {
+		logger.Error("Erro ao fazer logout", "error", err, "session_id", sessionID)
+		return err
+	}
+	return nil
 }
 
 // LogoutAll invalidates all sessions for a user
 func (m *AuthManager) LogoutAll(userID string) error {
-	return m.sessionAdapter.DeleteUserSessions(userID)
+	if err := m.sessionAdapter.DeleteUserSessions(userID); err != nil {
+		logger.Error("Erro ao fazer logout de todas as sessões", "error", err, "user_id", userID)
+		return err
+	}
+	logger.Info("Todas as sessões do usuário foram invalidadas", "user_id", userID)
+	return nil
 }
 
 // GetUserAdapter returns the user adapter (useful for registration, etc)

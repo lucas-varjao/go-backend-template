@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gosveltekit/internal/auth"
+	"gosveltekit/internal/logger"
 	"gosveltekit/internal/models"
 
 	"gorm.io/gorm"
@@ -25,12 +26,14 @@ func (a *SessionAdapter) CreateSession(userID string, expiresAt time.Time, metad
 	// Parse userID as uint for GORM model
 	uid, err := strconv.ParseUint(userID, 10, 64)
 	if err != nil {
+		logger.Error("Erro ao parsear userID para criar sessão", "error", err, "user_id", userID)
 		return nil, err
 	}
 
 	// Generate session ID
 	sessionID, err := auth.GenerateSessionID()
 	if err != nil {
+		logger.Error("Erro ao gerar ID de sessão", "error", err, "user_id", userID)
 		return nil, err
 	}
 
@@ -44,6 +47,7 @@ func (a *SessionAdapter) CreateSession(userID string, expiresAt time.Time, metad
 	}
 
 	if err := a.db.Create(session).Error; err != nil {
+		logger.Error("Erro ao criar sessão no banco de dados", "error", err, "user_id", userID, "session_id", sessionID)
 		return nil, err
 	}
 
@@ -57,6 +61,7 @@ func (a *SessionAdapter) GetSession(sessionID string) (*auth.Session, error) {
 		if err == gorm.ErrRecordNotFound {
 			return nil, auth.ErrSessionNotFound
 		}
+		logger.Error("Erro ao buscar sessão no banco de dados", "error", err, "session_id", sessionID)
 		return nil, err
 	}
 
@@ -65,21 +70,34 @@ func (a *SessionAdapter) GetSession(sessionID string) (*auth.Session, error) {
 
 // UpdateSessionExpiry updates the expiration time of a session
 func (a *SessionAdapter) UpdateSessionExpiry(sessionID string, expiresAt time.Time) error {
-	return a.db.Model(&models.Session{}).Where("id = ?", sessionID).Update("expires_at", expiresAt).Error
+	if err := a.db.Model(&models.Session{}).Where("id = ?", sessionID).Update("expires_at", expiresAt).Error; err != nil {
+		logger.Error("Erro ao atualizar expiração da sessão", "error", err, "session_id", sessionID)
+		return err
+	}
+	return nil
 }
 
 // DeleteSession removes a session
 func (a *SessionAdapter) DeleteSession(sessionID string) error {
-	return a.db.Where("id = ?", sessionID).Delete(&models.Session{}).Error
+	if err := a.db.Where("id = ?", sessionID).Delete(&models.Session{}).Error; err != nil {
+		logger.Error("Erro ao deletar sessão", "error", err, "session_id", sessionID)
+		return err
+	}
+	return nil
 }
 
 // DeleteUserSessions removes all sessions for a user
 func (a *SessionAdapter) DeleteUserSessions(userID string) error {
 	uid, err := strconv.ParseUint(userID, 10, 64)
 	if err != nil {
+		logger.Error("Erro ao parsear userID para deletar sessões", "error", err, "user_id", userID)
 		return err
 	}
-	return a.db.Where("user_id = ?", uid).Delete(&models.Session{}).Error
+	if err := a.db.Where("user_id = ?", uid).Delete(&models.Session{}).Error; err != nil {
+		logger.Error("Erro ao deletar sessões do usuário", "error", err, "user_id", userID)
+		return err
+	}
+	return nil
 }
 
 // DeleteExpiredSessions cleans up expired sessions

@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"fmt"
 	"gosveltekit/internal/config"
+	"gosveltekit/internal/logger"
 	"html/template"
 	"net/smtp"
 )
@@ -103,17 +104,25 @@ func (s *EmailService) SendPasswordResetEmail(to, token, username, displayName s
 	// Criamos um template a partir do HTML
 	t, err := template.New("reset_email").Parse(htmlBody)
 	if err != nil {
+		logger.Error("Erro ao analisar template de email", "error", err, "email", to)
 		return fmt.Errorf("erro ao analisar template: %w", err)
 	}
 
 	// Aplicamos os dados ao template
 	var body bytes.Buffer
 	if err := t.Execute(&body, data); err != nil {
+		logger.Error("Erro ao executar template de email", "error", err, "email", to)
 		return fmt.Errorf("erro ao executar template: %w", err)
 	}
 
 	// Enviamos o email usando a função auxiliar
-	return s.sendEmail(to, subject, body.String())
+	if err := s.sendEmail(to, subject, body.String()); err != nil {
+		logger.Error("Erro ao enviar email via SMTP", "error", err, "email", to, "smtp_host", s.config.SMTPHost)
+		return err
+	}
+
+	logger.Debug("Email de recuperação de senha enviado com sucesso", "email", to)
+	return nil
 }
 
 // sendEmail é uma função auxiliar que envia um email usando SMTP
@@ -149,11 +158,15 @@ func (s *EmailService) sendEmail(to, subject, htmlBody string) error {
 	addr := fmt.Sprintf("%s:%d", host, port)
 
 	// Enviamos o email
-	return smtp.SendMail(
+	if err := smtp.SendMail(
 		addr,
 		auth,
 		fromEmail,
 		[]string{to},
 		message.Bytes(),
-	)
+	); err != nil {
+		logger.Error("Erro ao enviar email via SMTP", "error", err, "to", to, "addr", addr)
+		return err
+	}
+	return nil
 }

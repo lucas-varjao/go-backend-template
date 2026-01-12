@@ -102,12 +102,16 @@ func (s *AuthService) ValidateSession(sessionID string) (*auth.Session, *auth.Us
 	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrSessionNotFound):
+			logger.Debug("Sessão não encontrada durante validação", "session_id", sessionID)
 			return nil, nil, ErrInvalidToken
 		case errors.Is(err, auth.ErrSessionExpired):
+			logger.Debug("Sessão expirada durante validação", "session_id", sessionID)
 			return nil, nil, ErrExpiredToken
 		case errors.Is(err, auth.ErrUserNotActive):
+			logger.Warn("Usuário inativo durante validação de sessão", "session_id", sessionID)
 			return nil, nil, ErrUserNotActive
 		default:
+			logger.Error("Erro ao validar sessão", "error", err, "session_id", sessionID)
 			return nil, nil, err
 		}
 	}
@@ -116,12 +120,20 @@ func (s *AuthService) ValidateSession(sessionID string) (*auth.Session, *auth.Us
 
 // Logout invalidates a session
 func (s *AuthService) Logout(sessionID string) error {
-	return s.authManager.Logout(sessionID)
+	if err := s.authManager.Logout(sessionID); err != nil {
+		logger.Error("Erro ao fazer logout no service", "error", err, "session_id", sessionID)
+		return err
+	}
+	return nil
 }
 
 // LogoutAll invalidates all sessions for a user
 func (s *AuthService) LogoutAll(userID string) error {
-	return s.authManager.LogoutAll(userID)
+	if err := s.authManager.LogoutAll(userID); err != nil {
+		logger.Error("Erro ao fazer logout de todas as sessões no service", "error", err, "user_id", userID)
+		return err
+	}
+	return nil
 }
 
 // Register creates a new user account
